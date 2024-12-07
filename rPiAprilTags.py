@@ -7,19 +7,27 @@ import wpimath.units
 from wpimath.geometry import Pose3d, Transform3d, Translation3d, Rotation3d, Quaternion, CoordinateSystem
 
 # Config info for the pose estimator. This is dependent on the camera used
-poseEstimatorConfig = robotpy_apriltag.AprilTagPoseEstimator.Config(
-    0.1651,  #tag size in meters
-    543.93,  #Fx: x focal length
-    544.98,  #Fy: y focal length
-    316.29,  #Cx: x focal center (based on 640x480 resolution)
-    250.55,  #Cy: y focal center (based on 640x480 resolution)
-)
+tagSize = 0.1651  #tag size in meters
+Fx = 671.23  #x focal length
+Fy = 675.13  #y focal length
+Cx = 329.84  #x focal center (based on 640x480 resolution)
+Cy = 223.34  #y focal center (based on 640x480 resolution)
+
+poseEstimatorConfig = robotpy_apriltag.AprilTagPoseEstimator.Config(tagSize, Fx, Fy, Cx, Cy)
+
+# Pull the camera distortion values off the PhotonVision OpenCV calibration
+cameraDistortion = numpy.float32([0.175, -1.194, -0.008, 0.001, 2.25 ])
+cameraIntrinsics = numpy.eye(3)
+cameraIntrinsics[0][0] = Fx
+cameraIntrinsics[1][1] = Fy
+cameraIntrinsics[0][2] = Cx
+cameraIntrinsics[1][2] = Cy
 
 # create the PoseEstimator
 poseEstimator = robotpy_apriltag.AprilTagPoseEstimator(poseEstimatorConfig)
 
 # store the robot to camera transform
-robotToCamera = Transform3d(Translation3d(0.2, 0.0, 1.0),
+robotToCamera = Transform3d(Translation3d(0.0, 0.0, 0.0),
                             Rotation3d())
 
 # read the field data into the AprilTagFieldLayout object
@@ -64,7 +72,7 @@ grayMat = numpy.zeros(shape=(xResolution, yResolution), dtype=numpy.uint8)
 
 # color for tag outline
 lineColor = (0,255,0)
-
+lineColor2 = (0, 0, 255)
 
 # main loop
 while True:
@@ -79,22 +87,47 @@ while True:
 
 	if (detections != []):
         # Tags were found. estimate the transform from the camera to the (first) tag
-		cameraToTag = poseEstimator.estimate(detections[0])
-		tagId = detections[0].getId()
+		detection = detections[0]
+
+		# Undistort the corners using the camera calibration
+		corners = list(detection.getCorners(numpy.empty(8)))
+
+		# Outline the tag using original corners
+		for i in range(4):
+			j = (i + 1) % 4
+			p1 = (int(corners[2*i]),int(corners[2*i+1]))
+			p2 = (int(corners[2*j]),int(corners[2*j+1]))
+			mat = cv2.line(mat, p1, p2, lineColor, 2)
+
+		distortedCorners = numpy.empty([4,2], dtype=numpy.float32)
+		for i in range(4):
+			distortedCorners[i][0]=corners[2*i]
+			distortedCorners[i][1]=corners[2*i+1]
+
+		# run the OpenCV undistortion routine to fix the corners
+		undistortedCorners = cv2.undistortImagePoints(distortedCorners, cameraIntrinsics, cameraDistortion)
+		for i in range(4):
+			corners[2*i] = undistortedCorners[i][0][0]
+			corners[2*i+1] = undistortedCorners[i][0][1]
+
+		# Overlay undistorted corners too
+		for i in range(4):
+			j = (i + 1) % 4
+			p1 = (int(corners[2*i]),int(corners[2*i+1]))
+			p2 = (int(corners[2*j]),int(corners[2*j+1]))
+			mat = cv2.line(mat, p1, p2, lineColor2, 2)
+
+		# run the pose estimator using the fixed corners
+		cameraToTag = poseEstimator.estimate(
+			homography=detection.getHomography(),
+			corners = tuple(corners))
+		tagId = detection.getId()
 	else:
         # No tags found, so just store an empty transform
 		cameraToTag = Transform3d()
 		cameraPose = Pose3d()
 		robotPose = Pose3d()
 		tagId = 0
-
-	# Outline all tags found
-	for detection in detections:
-		for i in range(4):
-			j = (i + 1) % 4
-			p1 = (int(detection.getCorner(i).x), int(detection.getCorner(i).y))
-			p2 = (int(detection.getCorner(j).x), int(detection.getCorner(j).y))
-			mat = cv2.line(mat, p1, p2, lineColor, 2)
 
 	# Process the first tag
 	if tagId > 0:
@@ -119,8 +152,8 @@ while True:
 	outputStream.putFrame(mat)
 
 	# update NetworkTables
-	xPublisher.set(robotPose.x)
-	yPublisher.set(robotPose.y)
-	zPublisher.set(robotPose.z)
+	xPublisher.set(round(robotPose.x,3))
+	yPublisher.set(round(robotPose.y,3))
+	zPublisher.set(round(robotPose.z,3))
 	tagIdPublisher.set(tagId)
 	tagFoundPublisher.set(tagId > 0)
