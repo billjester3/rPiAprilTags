@@ -40,8 +40,21 @@ aprilTagDetector.addFamily("tag36h11", 3)
 # set configuration for the AprilTagDetector
 # see https://robotpy.readthedocs.io/projects/robotpy/en/latest/robotpy_apriltag/AprilTagDetector.html for options
 aprilTagDetectorConfig = aprilTagDetector.getConfig()
-aprilTagDetectorConfig.quadDecimate = 0.25
+aprilTagDetectorConfig.numThreads = 4
+aprilTagDetectorConfig.debug = 0
+aprilTagDetectorConfig.refineEdges = True
+aprilTagDetectorConfig.quadSigma = 0.5
+aprilTagDetectorConfig.quadDecimate = 1.0
 aprilTagDetector.setConfig(aprilTagDetectorConfig)
+
+quadThresholdParameters = aprilTagDetector.getQuadThresholdParameters()
+quadThresholdParameters.minClusterPixels = 5
+quadThresholdParameters.maxNumMaxima = 10
+quadThresholdParameters.criticalAngle = 0.79 # 45 degrees
+quadThresholdParameters.maxLineFitMSE = 10.0
+quadThresholdParameters.minWhiteBlackDiff = 5
+quadThresholdParameters.deglitch = False
+aprilTagDetector.setQuadThresholdParameters(quadThresholdParameters)
 
 
 # create NetworkTables server (change to client when this is on the robot)
@@ -59,11 +72,6 @@ yPublisher = poseTable.getDoubleTopic("Y").publish()
 zPublisher = poseTable.getDoubleTopic("Z").publish()
 
 
-#Camera constants
-xResolution = 640
-yResolution = 480
-frameRate = 30
-
 # start up CameraServer with a USB camera
 camera = CameraServer.startAutomaticCapture()
 CameraServer.enableLogging()
@@ -75,6 +83,10 @@ cameraConfig = open("cameraConfig.json", "r")
 cameraConfigJson = json.load(cameraConfig)
 camera.setConfigJson(cameraConfigJson)
 
+xResolution = camera.getVideoMode().width
+yResolution = camera.getVideoMode().height
+
+print("Camera resolution: (", xResolution, ",", yResolution, ")")
 
 # create output sync for modified image
 cvSink = CameraServer.getVideo()
