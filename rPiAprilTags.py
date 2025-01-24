@@ -3,6 +3,7 @@ import ntcore
 import numpy
 import cv2
 import robotpy_apriltag
+import json
 import wpimath.units
 from wpimath.geometry import Pose3d, Transform3d, Translation3d, Rotation3d, Quaternion, CoordinateSystem
 
@@ -36,6 +37,13 @@ aprilTagFieldLayout = robotpy_apriltag.AprilTagFieldLayout("TagPoses.json")
 aprilTagDetector = robotpy_apriltag.AprilTagDetector()
 aprilTagDetector.addFamily("tag36h11", 3)
 
+# set configuration for the AprilTagDetector
+# see https://robotpy.readthedocs.io/projects/robotpy/en/latest/robotpy_apriltag/AprilTagDetector.html for options
+aprilTagDetectorConfig = aprilTagDetector.getConfig()
+aprilTagDetectorConfig.quadDecimate = 0.25
+aprilTagDetector.setConfig(aprilTagDetectorConfig)
+
+
 # create NetworkTables server (change to client when this is on the robot)
 ntInstance = ntcore.NetworkTableInstance.getDefault()
 ntInstance.startServer()
@@ -59,8 +67,14 @@ frameRate = 30
 # start up CameraServer with a USB camera
 camera = CameraServer.startAutomaticCapture()
 CameraServer.enableLogging()
-camera.setResolution(xResolution, yResolution)
-camera.setFPS(frameRate)
+
+# read camera json settings.
+# for a list of valid settings/ranges on the camera, run:
+#   v4l2-ctl --list-ctrls --device /dev/video0
+cameraConfig = open("cameraConfig.json", "r")
+cameraConfigJson = json.load(cameraConfig)
+camera.setConfigJson(cameraConfigJson)
+
 
 # create output sync for modified image
 cvSink = CameraServer.getVideo()
