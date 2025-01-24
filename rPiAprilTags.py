@@ -4,6 +4,7 @@ import numpy
 import cv2
 import robotpy_apriltag
 import json
+import time
 import wpimath.units
 from wpimath.geometry import Pose3d, Transform3d, Translation3d, Rotation3d, Quaternion, CoordinateSystem
 
@@ -65,6 +66,7 @@ ntInstance.startServer()
 table = ntInstance.getTable("AprilTags")
 tagIdPublisher = table.getIntegerTopic("Tag ID").publish()
 tagFoundPublisher = table.getBooleanTopic("Tag Found?").publish()
+fpsPublisher = table.getDoubleTopic("FPS").publish()
 
 poseTable = table.getSubTable("Robot Pose")
 xPublisher = poseTable.getDoubleTopic("X").publish()
@@ -79,6 +81,7 @@ CameraServer.enableLogging()
 # read camera json settings.
 # for a list of valid settings/ranges on the camera, run:
 #   v4l2-ctl --list-ctrls --device /dev/video0
+#   v4l2-ctl --list-formats-ext
 cameraConfig = open("cameraConfig.json", "r")
 cameraConfigJson = json.load(cameraConfig)
 camera.setConfigJson(cameraConfigJson)
@@ -104,6 +107,9 @@ lineColor2 = (0, 0, 255)
 while True:
 	# grab the latest frame from the camera
 	_, mat = cvSink.grabFrame(mat)
+
+	# get the time so we can estimate FPS
+	startTime = time.time()
 
 	# convert to grayscale for AprilTag detection
 	grayMat = cv2.cvtColor(mat, cv2.COLOR_RGB2GRAY)
@@ -183,3 +189,6 @@ while True:
 	zPublisher.set(round(robotPose.z,3))
 	tagIdPublisher.set(tagId)
 	tagFoundPublisher.set(tagId > 0)
+
+	frameTime = time.time() - startTime
+	fpsPublisher.set(1.0/frameTime)
